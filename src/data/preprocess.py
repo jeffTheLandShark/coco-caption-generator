@@ -4,6 +4,11 @@ import re
 import pickle
 from collections import Counter
 
+import sys
+from pathlib import Path
+project_root = Path(__file__).resolve().parent.parent.parent
+sys.path.append(str(project_root))
+
 from src.data.vocab import Vocabulary
 from src.utils.config import *
 
