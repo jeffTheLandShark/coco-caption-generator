@@ -3,6 +3,7 @@ import torch.nn as nn
 
 import sys
 from pathlib import Path
+
 project_root = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(project_root))
 
@@ -18,7 +19,7 @@ class ImageCaptionModel(nn.Module):
     image_features → embeddings → LSTM → output → logits
     """
 
-    def __init__(self, vocab_size, num_layers=1, dropout=0.1):
+    def __init__(self, vocab_size, num_layers=1, dropout=0.0):
         super().__init__()
         self.embedding = nn.Embedding(vocab_size, EMBED_DIM)
         self.lstm = nn.LSTM(
