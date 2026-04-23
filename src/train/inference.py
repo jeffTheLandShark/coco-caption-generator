@@ -43,7 +43,7 @@ def main():
     # TODO Randomize index?
     infer_caption = generate_caption(model, features[0])
 
-    print(f"Inference: {caption}")
+    print(f"Inference: {infer_caption}")
 
 
 if __name__ == "__main__":
