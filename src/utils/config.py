@@ -19,8 +19,10 @@ DATA_DIR = "data/"
 RAW_DIR = DATA_DIR + "raw/"
 PROCESSED_DIR = DATA_DIR + "processed/"
 FEATURE_DIR = DATA_DIR + "features/"
+TRAIN_DIR = DATA_DIR + "train/"
 
 # Files
 VOCAB_FILE = PROCESSED_DIR + "vocab.json"
 CAPTIONS_FILE = PROCESSED_DIR + "captions.pkl"
 FEATURES_FILE = FEATURE_DIR + "features.pt"
+TRAIN_FILE = TRAIN_DIR + "trained_model.pt"
