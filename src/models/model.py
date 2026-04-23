@@ -75,6 +75,19 @@ class ImageCaptionModel(nn.Module):
         Returns:
             caption: list of words
         """
+
+        # check that model is in eval mode
+        if self.training:
+            raise RuntimeError("generate_caption should be called in eval mode")
+
+        # check that vocab contains necessary special tokens
+        if (
+            not hasattr(vocab, "sos_idx")
+            or not hasattr(vocab, "eos_idx")
+            or len(vocab) == 0
+        ):
+            raise ValueError("Vocabulary must have sos_idx and eos_idx attributes")
+
         device = next(self.parameters()).device
 
         # Project image feature to hidden dimension
