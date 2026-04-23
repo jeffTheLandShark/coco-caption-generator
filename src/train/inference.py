@@ -28,12 +28,8 @@ def generate_caption(model, image_feature):
     Returns:
         list[str]
     """
-    device = next(model.parameters()).device
-    
-    for _ in range(5):
-        image_feature.unsqueeze(0).to(device)
-        
-    raise NotImplementedError
+    vocab = Vocabulary.load(VOCAB_FILE)
+    return model.generate_caption(image_feature, vocab)
 
 
 def main():
