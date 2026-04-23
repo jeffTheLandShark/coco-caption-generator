@@ -2,6 +2,11 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
+import sys
+from pathlib import Path
+project_root = Path(__file__).resolve().parent.parent.parent
+sys.path.append(str(project_root))
+
 from src.utils.config import *
 
 from torch.utils.data import DataLoader
@@ -35,8 +40,10 @@ def build_model():
     Returns:
         nn.Module
     """
+    vocab = Vocabulary.load(VOCAB_FILE)
+    #vocab.save(VOCAB_FILE)
     model = ImageCaptionModel(vocab_size=len(vocab))
-    return model
+    return model, vocab
 
 
 def train():
@@ -50,9 +57,10 @@ def train():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Training using {device}")
 
-    vocab = Vocabulary.load(VOCAB_FILE)
+    #vocab = Vocabulary.load(VOCAB_FILE)
     loader = load_dataloader()
-    model = build_model()
+    model, vocab = build_model()
+    model = model.to(device)
 
     criterion = nn.CrossEntropyLoss(ignore_index=vocab.pad_idx)
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
@@ -61,10 +69,14 @@ def train():
         model.train(mode=True)
         total_loss = 0.0
 
-        for features, captions_in, captions_out in loader:
+        for features, captions in loader:
+        # for features, captions_in, captions_out in loader:
             features = features.to(device)
-            captions_in = captions_in.to(device)
-            captions_out = captions_out.to(device)
+            captions = captions.to(device)
+            # captions_in = captions_in.to(device)
+            # captions_out = captions_out.to(device)
+            captions_in  = captions[:, :-1]
+            captions_out = captions[:, 1:]
 
             # Forward
             logits = model(features, captions_in)
