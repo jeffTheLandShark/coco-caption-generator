@@ -21,6 +21,21 @@ TRANSFORM = transforms.Compose([
                          std=[0.229, 0.224, 0.225])
 ])
 
+def load_encoder():
+    """
+    Load ResNet50 encoder (classifier removed).
+    Call once and reuse across extract_features / extract_features_from_image.
+
+    Returns:
+        encoder : nn.Sequential on the appropriate device
+        device  : torch.device
+    """
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    resnet = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
+    encoder = nn.Sequential(*list(resnet.children())[:-1])
+    encoder.eval().to(device)
+    return encoder, device
+
 def load_images():
     """
     Load images from dataset.
@@ -40,32 +55,54 @@ def load_images():
 
     return torch.stack(tensors) # (N, 3, 224, 224)
 
-
-def extract_features(images):
+def extract_features(images, encoder=None, device=None):
     """
-    Extract CNN features (e.g., ResNet).
+    Extract CNN features from a batch of images.
+
+    Args:
+        images          : Tensor (N, 3, H, W)
+        encoder, device : from load_encoder(); loaded fresh if not provided
 
     Returns:
-        Tensor (N, FEATURE_DIM)
+        Tensor (N, 2048)
     """
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"[Extract] Using device: {device}")
+    if encoder is None:
+        encoder, device = load_encoder()
 
-    # ResNet50 with classifier removed - outputs (N, 2048)
-    resnet = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
-    encoder = nn.Sequential(*list(resnet.children())[:-1])
-    encoder.eval().to(device)
+    print(f"[Extract] Using device: {device}")
 
     all_features = []
 
     with torch.no_grad():
-        # Process in batches so we don't run out of memory
         for i in tqdm(range(0, len(images), BATCH_SIZE), desc="Extracting"):
             batch = images[i : i + BATCH_SIZE].to(device)
-            feats = encoder(batch).squeeze(-1).squeeze(-1) # (B, 2048)
+            feats = encoder(batch).squeeze(-1).squeeze(-1)  # (B, 2048)
             all_features.append(feats.cpu())
-    
-    return torch.cat(all_features, dim=0) # (N, 2048)
+
+    return torch.cat(all_features, dim=0)  # (N, 2048)
+
+
+def extract_features_from_image(image_path: str, encoder=None, device=None) -> torch.Tensor:
+    """
+    Extract CNN features from a single image outside the dataset.
+
+    Args:
+        image_path      : Path to any .jpg/.png image file
+        encoder, device : from load_encoder(); loaded fresh if not provided
+
+    Returns:
+        Tensor (2048,)
+    """
+    if encoder is None:
+        encoder, device = load_encoder()
+
+    img = Image.open(image_path).convert("RGB")
+    tensor = TRANSFORM(img).unsqueeze(0).to(device)  # (1, 3, 224, 224)
+
+    with torch.no_grad():
+        features = encoder(tensor).squeeze()  # (2048,)
+
+    return features.cpu()
 
 
 def main():
