@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
+import time
+
 import sys
 from pathlib import Path
 project_root = Path(__file__).resolve().parent.parent.parent
@@ -42,7 +44,7 @@ def build_model():
     """
     vocab = Vocabulary.load(VOCAB_FILE)
     #vocab.save(VOCAB_FILE)
-    model = ImageCaptionModel(vocab_size=len(vocab))
+    model = ImageCaptionModel(vocab_size=len(vocab), num_layers=NUM_LAYERS, dropout=DROPOUT)
     return model, vocab
 
 
@@ -92,11 +94,31 @@ def train():
 
             total_loss += loss.item()
 
-        print(f"Epoch {epoch+1}, Loss: {total_loss:.4f}")
+        avg_loss = total_loss / len(loader)
+        print(f"Epoch {epoch+1}, Loss: {avg_loss:.4f}")
         torch.save(model.state_dict(), MODEL_FILE)
 
     print(f"Training complete. Model saved at {MODEL_FILE}")
 
 
+class Timer(object):
+    def __init__(self, name=None, filename=None):
+        self.name = name
+        self.filename = filename
+
+    def __enter__(self):
+        self.tstart = time.time()
+
+    def __exit__(self, type, value, traceback):
+        message = 'Elapsed: %.2f seconds' % (time.time() - self.tstart)
+        if self.name:
+            message = '[%s] ' % self.name + message
+        print(message)
+        if self.filename:
+            with open(self.filename,'a') as file:
+                print(str(datetime.datetime.now())+": ",message,file=file)
+
+
 if __name__ == "__main__":
-    train()
+    with Timer('Total time'):
+        train()

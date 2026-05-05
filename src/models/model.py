@@ -10,6 +10,8 @@ sys.path.append(str(project_root))
 from src.utils.config import *
 from src.data.vocab import Vocabulary
 
+from src.models.attention import Attention
+
 
 class ImageCaptionModel(nn.Module):
     """
@@ -23,12 +25,15 @@ class ImageCaptionModel(nn.Module):
         super().__init__()
         self.embedding = nn.Embedding(vocab_size, EMBED_DIM)
         self.lstm = nn.LSTM(
-            input_size=EMBED_DIM,
+            # input_size=EMBED_DIM,
+            input_size=EMBED_DIM + FEATURE_DIM,
             hidden_size=HIDDEN_DIM,
             num_layers=num_layers,
             dropout=dropout,
             batch_first=True,
         )
+        self.attention = Attention(FEATURE_DIM, HIDDEN_DIM)
+
         self.feature_proj = nn.Linear(FEATURE_DIM, HIDDEN_DIM)
         self.output_proj = nn.Linear(HIDDEN_DIM, vocab_size)
 
@@ -44,22 +49,45 @@ class ImageCaptionModel(nn.Module):
             logits: (batch, seq_len, vocab_size)
         """
 
-        embeddings = self.embedding(captions_in)  # (batch, seq_len, embed_dim)
+        # embeddings = self.embedding(captions_in)  # (batch, seq_len, embed_dim)
 
-        # Project image features to hidden dimension
-        projected_features = self.feature_proj(image_features)  # (batch, hidden_dim)
+        # # Project image features to hidden dimension
+        # projected_features = self.feature_proj(image_features)  # (batch, hidden_dim)
 
-        # Initialize LSTM hidden and cell states with projected image features
-        h_0 = projected_features.unsqueeze(0)  # (1, batch, hidden_dim)
-        c_0 = torch.zeros_like(h_0)  # (1, batch, hidden_dim)
+        # # Initialize LSTM hidden and cell states with projected image features
+        # h_0 = projected_features.unsqueeze(0).repeat(self.lstm.num_layers, 1, 1)  # (1, batch, hidden_dim)
+        # c_0 = torch.zeros_like(h_0)  # (1, batch, hidden_dim)
 
-        # Pass embeddings through LSTM
-        hidden_states, _ = self.lstm(
-            embeddings, (h_0, c_0)
-        )  # (batch, seq_len, hidden_dim)
+        # # Pass embeddings through LSTM
+        # hidden_states, _ = self.lstm(
+        #     embeddings, (h_0, c_0)
+        # )  # (batch, seq_len, hidden_dim)
 
-        logits = self.output_proj(hidden_states)  # (batch, seq_len, vocab_size)
+        # logits = self.output_proj(hidden_states)  # (batch, seq_len, vocab_size)
 
+        batch_size, num_regions, _ = image_features.shape
+
+        h_t = torch.zeros(self.lstm.num_layers, batch_size, HIDDEN_DIM).to(image_features.device)
+        c_t = torch.zeros_like(h_t)
+
+        outputs = []
+
+        for t in range(captions_in.size(1)):
+            word_embed = self.embedding(captions_in[:, t])  # (B, E)
+
+            # Use last layer hidden state
+            h_last = h_t[-1]
+
+            context, _ = self.attention(image_features, h_last)
+
+            lstm_input = torch.cat([word_embed, context], dim=1).unsqueeze(1)
+
+            out, (h_t, c_t) = self.lstm(lstm_input, (h_t, c_t))
+
+            logits = self.output_proj(out.squeeze(1))
+            outputs.append(logits)
+
+        logits = torch.stack(outputs, dim=1)
         return logits
 
     def generate_caption(
@@ -88,37 +116,66 @@ class ImageCaptionModel(nn.Module):
         ):
             raise ValueError("Vocabulary must have sos_idx and eos_idx attributes")
 
-        device = next(self.parameters()).device
+        # device = next(self.parameters()).device
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # Project image feature to hidden dimension
-        projected_feature = self.feature_proj(
-            image_feature.unsqueeze(0).to(device)
-        )  # (1, hidden_dim)
+        # projected_feature = self.feature_proj(
+        #     image_feature.unsqueeze(0).to(device)
+        # )  # (1, hidden_dim)
+        image_feature = image_feature.to(device)
+        image_feature = image_feature.unsqueeze(0)
 
         # Initialize LSTM hidden and cell states
-        h_t = projected_feature.unsqueeze(0)  # (1, 1, hidden_dim)
-        c_t = torch.zeros_like(h_t)  # (1, 1, hidden_dim)
+        # h_t = projected_feature.unsqueeze(0)  # (1, 1, hidden_dim)
+        # c_t = torch.zeros_like(h_t)  # (1, 1, hidden_dim)
+
+        # h_t = projected_feature.unsqueeze(0).repeat(self.lstm.num_layers, 1, 1)  # (1, 1, hidden_dim)
+        # h_t = torch.zeros(self.lstm.num_layers, 1, HIDDEN_DIM).to(device)
+        # c_t = torch.zeros_like(h_t)  # (1, 1, hidden_dim)
+        
+        mean_feature = image_feature.mean(dim=1)  # (1, 2048)
+        h_t = self.feature_proj(mean_feature).unsqueeze(0)
+        h_t = h_t.repeat(self.lstm.num_layers, 1, 1)
+        c_t = torch.zeros_like(h_t)
 
         # Start token index (assuming <start> token is at index 1)
         input_token = torch.tensor([[vocab.sos_idx]], device=device)  # (1, 1)
 
         caption_indices = []
 
-        for _ in range(max_len):
-            embeddings = self.embedding(input_token)  # (1, 1, embed_dim)
-            output, (h_t, c_t) = self.lstm(
-                embeddings, (h_t, c_t)
-            )  # output: (1, 1, hidden_dim)
-            logits = self.output_proj(output.squeeze(1))  # (1, vocab_size)
-            predicted_idx = logits.argmax(dim=-1).item()  # Get predicted index
-            caption_indices.append(predicted_idx)
+        # for _ in range(max_len):
+        #     embeddings = self.embedding(input_token)  # (1, 1, embed_dim)
+        #     output, (h_t, c_t) = self.lstm(
+        #         embeddings, (h_t, c_t)
+        #     )  # output: (1, 1, hidden_dim)
+        #     logits = self.output_proj(output.squeeze(1))  # (1, vocab_size)
+        #     predicted_idx = logits.argmax(dim=-1).item()  # Get predicted index
+        #     caption_indices.append(predicted_idx)
 
-            if predicted_idx == vocab.eos_idx:  # Stop if <end> token is generated
+        #     if predicted_idx == vocab.eos_idx:  # Stop if <end> token is generated
+        #         break
+
+        #     input_token = torch.tensor(
+        #         [[predicted_idx]], device=device
+        #     )  # Next input token
+        for _ in range(max_len):
+            embed = self.embedding(input_token).squeeze(1)  # (1, embed_dim)
+
+            context, _ = self.attention(image_feature, h_t[-1])  # (1, 2048)
+            lstm_input = torch.cat([embed, context], dim=1).unsqueeze(1)
+
+            output, (h_t, c_t) = self.lstm(lstm_input, (h_t, c_t))
+
+            logits = self.output_proj(output.squeeze(1))
+            predicted_idx = logits.argmax(dim=-1).item()
+
+            if predicted_idx == vocab.eos_idx:
                 break
 
-            input_token = torch.tensor(
-                [[predicted_idx]], device=device
-            )  # Next input token
+            caption_indices.append(predicted_idx)
+
+            input_token = torch.tensor([[predicted_idx]], device=device)
 
         caption = [vocab.idx2word[idx] for idx in caption_indices]
         return caption

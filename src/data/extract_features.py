@@ -32,7 +32,8 @@ def load_encoder():
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     resnet = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
-    encoder = nn.Sequential(*list(resnet.children())[:-1])
+    # encoder = nn.Sequential(*list(resnet.children())[:-1])
+    encoder = nn.Sequential(*list(resnet.children())[:-2])
     encoder.eval().to(device)
     return encoder, device
 
@@ -76,7 +77,12 @@ def extract_features(images, encoder=None, device=None):
     with torch.no_grad():
         for i in tqdm(range(0, len(images), BATCH_SIZE), desc="Extracting"):
             batch = images[i : i + BATCH_SIZE].to(device)
-            feats = encoder(batch).squeeze(-1).squeeze(-1)  # (B, 2048)
+            # feats = encoder(batch).squeeze(-1).squeeze(-1)  # (B, 2048)
+            feats = encoder(batch)  # (B, 2048, 7, 7)
+            B, C, H, W = feats.shape
+            feats = feats.permute(0, 2, 3, 1)   # (B, 7, 7, 2048)
+            feats = feats.reshape(B, H * W, C)   # (B, 49, 2048)
+
             all_features.append(feats.cpu())
 
     return torch.cat(all_features, dim=0)  # (N, 2048)
@@ -100,7 +106,13 @@ def extract_features_from_image(image_path: str, encoder=None, device=None) -> t
     tensor = TRANSFORM(img).unsqueeze(0).to(device)  # (1, 3, 224, 224)
 
     with torch.no_grad():
-        features = encoder(tensor).squeeze()  # (2048,)
+        # features = encoder(tensor).squeeze()  # (2048,)
+        features = encoder(tensor)            # (1, 2048, 7, 7)
+        features = features.squeeze(0)        # (2048, 7, 7)
+
+        C, H, W = features.shape
+        features = features.permute(1, 2, 0)  # (7, 7, 2048)
+        features = features.reshape(H * W, C) # (49, 2048)
 
     return features.cpu()
 
@@ -127,7 +139,7 @@ def main():
     print(f"[Mean] Features saved -> {FEATURES_FILE}")
 
     # Verification
-    print(f"\n[Main] Sample feture vector:")
+    print(f"\n[Main] Sample feature vector:")
     print(f" shape   : {features[0].shape}")
     print(f" min/max : {features[0].min():.4f} / {features[0].max():.4f}")
 
