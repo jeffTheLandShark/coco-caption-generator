@@ -13,7 +13,7 @@ from src.utils.config import *
 
 
 def clean_caption(tokens):
-    """Remove <eos> and anything after it"""
+    # Remove <eos> and anything after it
     if "<eos>" in tokens:
         tokens = tokens[:tokens.index("<eos>")]
     return tokens
